@@ -22,6 +22,7 @@ class Adjustment:
                          max_n_flows=self.max_n_flows,
                          max_n_flow_hop=self.max_n_flow_hop)
                      for i in range(self.n_apps)]
+        self.reconfig_count = 0
 
     def run(self):
         self.current_states = [0]*self.n_apps
@@ -40,7 +41,7 @@ class Adjustment:
         return []
 
     def transition(self):
-        k = 2500
+        k = 500
         results = []
         for _ in range(k):
             for i in range(self.n_apps):
@@ -81,7 +82,7 @@ class Adjustment:
                                     self.partition[r[1]][r[0]].states = [self.current_states[inf_app]]
                             print(f"adjusted {len(selected)} apps", end=",")
                             res = {"method": "adjustment", "n_affected_apps": len(
-                                selected), "flex": self.flex, "time": time.time()-bt}
+                                selected), "flex": self.flex, "time": time.time()-bt,  "reconfig_count":self.reconfig_count}
                         else:
                             if self.verbose:
                                 print("unable to satisfy resource request")
@@ -96,16 +97,18 @@ class Adjustment:
                                 self.partition = self.heu2.partition
                                 self.feasible_states = self.heu2.all_feasible_states
                                 self.infeasible_states = self.heu2.all_infeasible_states
+                                self.reconfig_count += 1
                                 res = {"method": "reconfig", "n_affected_apps": self.n_apps,
-                                       "flex": self.flex, "time": time.time()-bt}
+                                       "flex": self.flex, "time": time.time()-bt,  "reconfig_count":self.reconfig_count}
                                 print("reconfig", end=",")
                         print(self.flex)
                         results.append(res)
                     else:
                         print("still feasible")
                         results.append({"method": "adjustment", "n_affected_apps": 0,
-                                       "flex": self.flex, "time": 0})
+                                       "flex": self.flex, "time": 0,  "reconfig_count":self.reconfig_count})
 
+        print(f"Number of reconfigurations: {self.reconfig_count}")
         return results
 
 
@@ -226,25 +229,28 @@ if __name__ == "__main__":
     n_trials = 1
     for i in range(n_trials):
         adj = Adjustment(trial=21, n_apps=10, T=50, links=range(30),
-                         max_n_states=20, max_n_flows=8, max_n_flow_hop=5,
+                         max_n_states=20, max_n_flows=8, max_n_flow_hop=3,
                          verbose=False)
         results = adj.run()
 
      
 
         print(len(results), "\n\n\n")
-        if len(results) >= 50:
+        if len(results) >= 10:
 
             n_apps = [res["n_affected_apps"] for res in results]
             flexs = [res["flex"] for res in results]
             times = [res["time"] for res in results]
+            counts = [res["reconfig_count"] for res in results]
 
             print({
                 "n_adjusted_apps": n_apps,
                 "flex": flexs,
                 "time": times,
+                "reconfig_count": counts,
                 "xAxis": [i for i in range(len(flexs))],
             })
+        print(adj.reconfig_count)
 
 '''
 init flex 2.5706
