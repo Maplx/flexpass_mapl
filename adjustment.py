@@ -231,8 +231,7 @@ if __name__ == "__main__":
                     reduced_time = (1-(sum(time_actual)/len(time_actual)) / (sum(time_reconfig)/len(time_reconfig)))*100
                 # flexs = [res["flex"] for res in results if res["n_affected_apps"] != 0]
                     overhead = (1-sum(n_affected_apps)/(len(results)*n_apps))*100
-                    print(f"[{t}] reduced {round(overhead, 2)}% overhead and {
-                        round(reduced_time, 2)}% time over {len(results)} adjustments")
+                    print(f"[{t}] reduced {round(overhead, 2)}% overhead and {round(reduced_time, 2)}% time over {len(results)} adjustments")
                     n_adj += len(results)
                     if n_adj > 500:
                         break
