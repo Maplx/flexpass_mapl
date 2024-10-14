@@ -201,6 +201,7 @@ class Adjustment:
 
     def find_resource_request(self, i, s):
         # rough calculation, to be improved
+        print('resource request start')
         flows = self.apps[i].states[s].flows
 
         resource_request = []
@@ -210,10 +211,20 @@ class Adjustment:
             used_links = {}
             for f in flows:
                 if t % f.period == 0:
-                    if f.id in cur_hops and cur_hops[f.id] < len(f.txs):
-                        resource_request.append(
-                            (f.txs[cur_hops[f.id]], [(t//f.period)*f.period, (t//f.period+1)*f.period]))
 
+                    if f.id in cur_hops and cur_hops[f.id] < len(f.txs):
+                        '''
+                        print('Current time: ',t, 'Flow period: ',f.period)
+                        print('current hop of flow',f.id, 'is ',cur_hops[f.id], '. The len of links in flow is ', len(f.txs))
+                        print('Flow links: ', f.txs)'''
+                        
+                        for i in range(cur_hops[f.id], len(f.txs)):
+                            resource_request.append(
+                            (f.txs[i], [(t//f.period)*f.period, (t//f.period+1)*f.period]))
+                            #print('Append: ',f.txs[i])
+                        
+                           
+ 
                     cur_hops[f.id] = 0
                 if cur_hops[f.id] < len(f.txs):
                     pkt = Packet(f.id, f.txs[cur_hops[f.id]], (t//f.period+1)*f.period, f.period)
@@ -313,14 +324,11 @@ if __name__ == "__main__":
     n_trials = 1
     for i in range(n_trials):
         adj = Adjustment(trial=21, n_apps=10, T=50, links=range(30),
-                         max_n_states=20, max_n_flows=8, max_n_flow_hop=3,
+                         max_n_states=20, max_n_flows=9, max_n_flow_hop=3,
                          verbose=False)
         results = adj.run()
 
-        
-
-        print(len(results), "\n\n\n")
-        
+        print(len(results), "\n\n\n")   
 
         if len(results) >= 10:
 

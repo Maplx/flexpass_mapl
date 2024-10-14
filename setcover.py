@@ -31,7 +31,7 @@ def weighted_set_cover_network(RR, RP, weights):
 
 
 # Example usage
-RR = [(1, [1, 5]), (2, [3, 6]), (3, [2, 5])]
+RR = [ (3, [2, 5])]
 RP = [
     {(1, 1), (2, 1), (3, 4)},
     {(1, 4),  (2, 1), (3, 1)},

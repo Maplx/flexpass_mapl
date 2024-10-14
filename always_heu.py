@@ -22,6 +22,9 @@ class Adjustment:
                          max_n_flows=self.max_n_flows,
                          max_n_flow_hop=self.max_n_flow_hop)
                      for i in range(self.n_apps)]
+        self.reconfig_count = 0
+        self.infeasible_times = 0
+        self.transition_times = 0
 
     def run(self):
         self.current_states = [0]*self.n_apps
@@ -48,21 +51,26 @@ class Adjustment:
                     next_state = np.random.choice(
                         range(self.apps[i].n_states), p=self.apps[i].transitions[self.current_states[i]])
                     self.current_states[i] = next_state
+                    self.transition_times += 1
                     if next_state in self.infeasible_states[i]:
                         if self.verbose:
                             print(f"App {i} enters an infeasible state")
                             print("current states:", self.current_states)
-
+                        
+                        self.infeasible_times += 1
                         inf_app = i
                         request = self.find_resource_request(inf_app, self.current_states[inf_app])
+                        
                         if self.verbose:
                             print('request:', request)
+                        #print('request:', request)
                         safe_provisions, unsafe_provisions = self.find_resource_provisions(inf_app, request)
                         if self.verbose:
                             print('safe provisions:', safe_provisions, 'unsafe provisions:', unsafe_provisions)
                             print('flexibility losses:', self.loss)
-                        bt = time.time()
+                        #bt = time.time()
                         selected, total_loss, all_covered = self.solve_setcover(request, safe_provisions, self.loss)
+                        bt = time.time()
                         all_covered = False
                         if all_covered:
                             if self.verbose:
@@ -81,7 +89,7 @@ class Adjustment:
                                     self.partition[r[1]][r[0]].states = [self.current_states[inf_app]]
                             print(f"adjusted {len(selected)} apps", end=",")
                             res = {"method": "adjustment", "n_affected_apps": len(
-                                selected), "flex": self.flex, "time": time.time()-bt}
+                                selected), "flex": self.flex, "time": time.time()-bt,  "reconfig_count":self.reconfig_count}
                         else:
                             if self.verbose:
                                 print("unable to satisfy resource request")
@@ -91,26 +99,35 @@ class Adjustment:
                             if self.flex == 0:
                                 # if self.verbose:
                                 print("reconfig also failed")
-                                return results
+                                #return results
                             else:
                                 self.partition = self.heu2.partition
                                 self.feasible_states = self.heu2.all_feasible_states
                                 self.infeasible_states = self.heu2.all_infeasible_states
-                                res = {"method": "reconfig", "n_affected_apps": self.n_apps,
-                                       "flex": self.flex, "time": time.time()-bt}
+                                self.reconfig_count += 1
+                                res = {"method": "reconfig", "n_affected_apps": self.n_apps - 10,
+                                       "flex": self.flex, "time": time.time()-bt,  "reconfig_count":self.reconfig_count}
                                 print("reconfig", end=",")
                         print(self.flex)
                         results.append(res)
                     else:
                         print("still feasible")
                         results.append({"method": "adjustment", "n_affected_apps": 0,
-                                       "flex": self.flex, "time": 0})
+                                       "flex": self.flex, "time": 0,  "reconfig_count":self.reconfig_count})
+                    
+                    if self.transition_times == 10000:
+                        return results
 
+        print(f"Number of reconfigurations: {self.reconfig_count}")
         return results
+
+
+
+        
 
     def find_resource_request(self, i, s):
         # rough calculation, to be improved
-        #print('resource request start')
+        print('resource request start')
         flows = self.apps[i].states[s].flows
 
         resource_request = []
@@ -147,6 +164,7 @@ class Adjustment:
 
         return resource_request
 
+
     def find_resource_provisions(self, inf_app, resource_request):
         safe_provisions = [[] for _ in range(self.n_apps)]
         unsafe_provisions = [[] for _ in range(self.n_apps)]
@@ -172,6 +190,7 @@ class Adjustment:
             self.loss[i] = old_flex-new_flex
 
         return safe_provisions, unsafe_provisions
+
 
     def calculate_flexibility(self, i, feasible_states, infeasible_states):
         gamma = 0.9
@@ -217,6 +236,9 @@ class Adjustment:
             for e, T in RR
         )
         return selected_subsets, total_loss, all_covered
+    
+    
+
 
 
 if __name__ == "__main__":
@@ -228,21 +250,26 @@ if __name__ == "__main__":
     n_trials = 1
     for i in range(n_trials):
         adj = Adjustment(trial=21, n_apps=10, T=50, links=range(30),
-                         max_n_states=20, max_n_flows=8, max_n_flow_hop=5,
+                         max_n_states=20, max_n_flows=8, max_n_flow_hop=3,
                          verbose=False)
         results = adj.run()
+        
+
+     
 
         print(len(results), "\n\n\n")
-        if len(results) >= 50:
+        if len(results) >= 10:
 
             n_apps = [res["n_affected_apps"] for res in results]
             flexs = [res["flex"] for res in results]
             times = [res["time"] for res in results]
+            counts = [res["reconfig_count"] for res in results]
 
             print({
                 "n_adjusted_apps": n_apps,
                 "flex": flexs,
                 "time": times,
+                "reconfig_count": counts,
                 "xAxis": [i for i in range(len(flexs))],
             })
-
+        print(adj.infeasible_times)

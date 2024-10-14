@@ -23,6 +23,8 @@ class Adjustment:
                          max_n_flow_hop=self.max_n_flow_hop)
                      for i in range(self.n_apps)]
         self.reconfig_count = 0
+        self.infeasible_times = 0
+        self.transition_times = 0
 
     def run(self):
         self.current_states = [0]*self.n_apps
@@ -49,11 +51,13 @@ class Adjustment:
                     next_state = np.random.choice(
                         range(self.apps[i].n_states), p=self.apps[i].transitions[self.current_states[i]])
                     self.current_states[i] = next_state
+                    self.transition_times += 1
                     if next_state in self.infeasible_states[i]:
                         if self.verbose:
                             print(f"App {i} enters an infeasible state")
                             print("current states:", self.current_states)
-
+                        
+                        self.infeasible_times += 1
                         inf_app = i
                         request = self.find_resource_request(inf_app, self.current_states[inf_app])
                         
@@ -66,7 +70,7 @@ class Adjustment:
                             print('flexibility losses:', self.loss)
                         bt = time.time()
                         selected, total_loss, all_covered = self.solve_setcover(request, safe_provisions, self.loss)
-                        #all_covered = False
+                       
                         if all_covered:
                             if self.verbose:
                                 print("Selected apps:", selected, "total loss:", total_loss)
@@ -94,13 +98,13 @@ class Adjustment:
                             if self.flex == 0:
                                 # if self.verbose:
                                 print("reconfig also failed")
-                                return results
+                                #return results
                             else:
                                 self.partition = self.heu2.partition
                                 self.feasible_states = self.heu2.all_feasible_states
                                 self.infeasible_states = self.heu2.all_infeasible_states
                                 self.reconfig_count += 1
-                                res = {"method": "reconfig", "n_affected_apps": self.n_apps,
+                                res = {"method": "reconfig", "n_affected_apps": self.n_apps - 10,
                                        "flex": self.flex, "time": time.time()-bt,  "reconfig_count":self.reconfig_count}
                                 print("reconfig", end=",")
                         print(self.flex)
@@ -109,6 +113,9 @@ class Adjustment:
                         print("still feasible")
                         results.append({"method": "adjustment", "n_affected_apps": 0,
                                        "flex": self.flex, "time": 0,  "reconfig_count":self.reconfig_count})
+                    
+                    if self.transition_times == 10000:
+                        return results
 
         print(f"Number of reconfigurations: {self.reconfig_count}")
         return results
@@ -242,9 +249,10 @@ if __name__ == "__main__":
     n_trials = 1
     for i in range(n_trials):
         adj = Adjustment(trial=21, n_apps=10, T=50, links=range(30),
-                         max_n_states=20, max_n_flows=8, max_n_flow_hop=5,
+                         max_n_states=20, max_n_flows=8, max_n_flow_hop=3,
                          verbose=False)
         results = adj.run()
+        
 
      
 
@@ -263,67 +271,4 @@ if __name__ == "__main__":
                 "reconfig_count": counts,
                 "xAxis": [i for i in range(len(flexs))],
             })
-        print(adj.reconfig_count)
-
-'''
-init flex 2.5706
-adjusted 3 apps,2.295925327803344
-adjusted 3 apps,1.9959287700463477
-adjusted 3 apps,1.9214909672787521
-adjusted 4 apps,1.4755698809382793
-adjusted 3 apps,1.3277650760399644
-adjusted 1 apps,1.3277650760399644
-reconfig,2.8752
-reconfig,2.90555
-adjusted 4 apps,2.90555
-adjusted 3 apps,2.839656879319074
-adjusted 4 apps,2.4744118545105875
-reconfig,3.10479
-reconfig,2.71308
-adjusted 3 apps,2.71308
-adjusted 1 apps,2.71308
-reconfig,3.00223
-adjusted 4 apps,2.9527526551687036
-adjusted 2 apps,2.9527526551687036
-adjusted 3 apps,2.9527526551687036
-adjusted 4 apps,2.9527526551687036
-adjusted 2 apps,2.9527526551687036
-adjusted 3 apps,2.8278935530870846
-adjusted 2 apps,2.8278935530870846
-adjusted 5 apps,2.768043076176051
-adjusted 3 apps,2.768043076176051
-adjusted 2 apps,2.768043076176051
-adjusted 2 apps,2.768043076176051
-adjusted 2 apps,2.768043076176051
-reconfig,3.03148
-reconfig,2.85434
-adjusted 5 apps,2.7660459472753756
-adjusted 3 apps,2.7660459472753756
-reconfig,3.07975
-adjusted 2 apps,3.0411797302624928
-adjusted 4 apps,3.0411797302624928
-adjusted 1 apps,3.0411797302624928
-adjusted 0 apps,3.0411797302624928
-reconfig,3.27522
-adjusted 1 apps,3.27522
-reconfig,3.27138
-reconfig,3.39516
-reconfig,3.47427
-adjusted 3 apps,3.431979155820591
-adjusted 4 apps,3.4053357687209043
-adjusted 4 apps,3.08935187743269
-reconfig,3.28029
-adjusted 8 apps,2.2260842346377725
-reconfig,3.38308
-adjusted 3 apps,3.38308
-adjusted 2 apps,3.31727993899702
-adjusted 2 apps,3.280484835556222
-reconfig,3.40644
-adjusted 2 apps,3.40644
-adjusted 1 apps,3.40644
-reconfig,2.59245
-adjusted 3 apps,2.59245
-reconfig,3.43124
-adjusted 3 apps,2.7041485596735226
-adjusted 3 apps,2.7041485596735226
-'''
+        print(adj.infeasible_times)
