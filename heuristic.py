@@ -149,12 +149,13 @@ if __name__ == "__main__":
     links = range(50)
     # for t in range(50):
     apps = [App(t, i, links, T=T,
-                max_n_states=3,
-                max_n_flows=4,
+                max_n_states=20,
+                max_n_flows=6,
                 max_n_flow_hop=4)
-            for i in range(4)]
+            for i in range(10)]
     bt = time.time()
-    h = Heuristic(t, apps, links, T)
+    h = Heuristic(t, apps, links, T, current_states=[0]*len(apps))
     h.run()
     print(f"Time {time.time()-bt:.2f}s")
+    print(h.calculate_flexibility())
     # h.dump()

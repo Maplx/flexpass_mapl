@@ -25,6 +25,7 @@ class Adjustment:
         self.reconfig_count = 0
         self.infeasible_times = 0
         self.transition_times = 0
+        self.time = 0
 
     def run(self):
         self.current_states = [0]*self.n_apps
@@ -87,6 +88,7 @@ class Adjustment:
                                     self.partition[r[1]][r[0]].app = inf_app
                                     self.partition[r[1]][r[0]].states = [self.current_states[inf_app]]
                             print(f"adjusted {len(selected)} apps", end=",")
+                            self.time += time.time()-bt
                             res = {"method": "adjustment", "n_affected_apps": len(
                                 selected), "flex": self.flex, "time": time.time()-bt,  "reconfig_count":self.reconfig_count}
                         else:
@@ -106,6 +108,7 @@ class Adjustment:
                                 self.reconfig_count += 1
                                 res = {"method": "reconfig", "n_affected_apps": self.n_apps - 10,
                                        "flex": self.flex, "time": time.time()-bt,  "reconfig_count":self.reconfig_count}
+                                self.time += time.time()-bt
                                 print("reconfig", end=",")
                         print(self.flex)
                         results.append(res)
@@ -114,7 +117,7 @@ class Adjustment:
                         results.append({"method": "adjustment", "n_affected_apps": 0,
                                        "flex": self.flex, "time": 0,  "reconfig_count":self.reconfig_count})
                     
-                    if self.transition_times == 10000:
+                    if self.transition_times >= 500:
                         return results
 
         print(f"Number of reconfigurations: {self.reconfig_count}")
@@ -249,7 +252,7 @@ if __name__ == "__main__":
     n_trials = 1
     for i in range(n_trials):
         adj = Adjustment(trial=21, n_apps=10, T=50, links=range(30),
-                         max_n_states=20, max_n_flows=8, max_n_flow_hop=3,
+                         max_n_states=20, max_n_flows=7, max_n_flow_hop=4,
                          verbose=False)
         results = adj.run()
         

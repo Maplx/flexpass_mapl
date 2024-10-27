@@ -1,5 +1,8 @@
-import numpy as np
-from scipy.optimize import linear_sum_assignment
+import scipy
+import numpy
+print("Scipy version:", scipy.__version__)
+print("Numpy version:", numpy.__version__)
+
 
 def hungarian_matching(provision, loss, matching_request):
     # Prepare a list of valid requests and provisions

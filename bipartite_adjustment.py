@@ -29,6 +29,7 @@ class Adjustment:
         self.reconfig_count = 0
         self.infeasible_times = 0
         self.transition_times = 0
+        self.time = 0
 
     def run(self):
         self.current_states = [0]*self.n_apps
@@ -77,8 +78,10 @@ class Adjustment:
                         bt = time.time()
                         n_app = 0
                         matched_apps = []
+                        random.shuffle(grouped_resource)
 
                         for l in grouped_resource:
+                            print(l)
                             provision, matching_request = self.find_provision(inf_app, single_link_resource_request=l)
                             matching, total_cost = self.hungarian_matching(provision,self.loss, matching_request)
                             total_loss += total_cost
@@ -111,6 +114,8 @@ class Adjustment:
                             self.feasible_states[inf_app].append(self.current_states[inf_app])
 
                             print(n_app, 'apps engaged in matching adjustment')
+                            self.time += time.time()-bt
+                            print('Flexibility after matching:', self.flex)
                             res = {"method": "match","n_affected_apps": n_app, "flex": self.flex, "time": time.time()-bt,  "reconfig_count":self.reconfig_count}
                             
                         if all_covered == False:
@@ -129,18 +134,19 @@ class Adjustment:
                                 self.feasible_states = self.heu2.all_feasible_states
                                 self.infeasible_states = self.heu2.all_infeasible_states
                                 self.reconfig_count += 1
+                                self.time += time.time()-bt
 
                                 res = {"method": "reconfig", "n_affected_apps": self.n_apps - 10,
                                        "flex": self.flex, "time": time.time()-bt,  "reconfig_count":self.reconfig_count}
                                 print("reconfig", end=",")
-                        print(self.flex)
+                        print('Flexibility after reconfiguration:', self.flex)
                         results.append(res)
                     else:
                         print("still feasible")
                         results.append({"method": "adjustment", "n_affected_apps": 0,
                                        "flex": self.flex, "time": 0,  "reconfig_count":self.reconfig_count})
                     
-                    if self.transition_times == 10000:
+                    if self.transition_times >= 1500:
                         return results
 
         print(f"Number of reconfigurations: {self.reconfig_count}")
@@ -151,8 +157,9 @@ class Adjustment:
         
 
     def find_resource_request(self, i, s):
-        # rough calculation, to be improved
+        #rough calculation, to be improved
         #print('resource request start')
+        
         flows = self.apps[i].states[s].flows
 
         resource_request = []
@@ -259,8 +266,8 @@ class Adjustment:
             old_flex = self.calculate_flexibility(i, self.feasible_states[i], self.infeasible_states[i])
             self.sacrificed_states[i] = list(set(self.sacrificed_states[i]))
             new_flex = self.calculate_flexibility(
-                i, [s for s in self.feasible_states[i] if s not in self.sacrificed_states[i] and s not in self.condi_states[i]]
-                , self.infeasible_states[i]+self.sacrificed_states[i]+ self.condi_states[i])
+                i, [s for s in self.feasible_states[i] if s not in self.sacrificed_states[i]]
+                , self.infeasible_states[i]+self.sacrificed_states[i])
             self.loss[i] = old_flex-new_flex
         '''
         print(provision)
@@ -349,7 +356,7 @@ if __name__ == "__main__":
     n_trials = 1
     for i in range(n_trials):
         adj = Adjustment(trial=21, n_apps=10, T=50, links=range(30),
-                         max_n_states=20, max_n_flows=8, max_n_flow_hop=3,
+                         max_n_states=20, max_n_flows=8, max_n_flow_hop=5,
                          verbose=False)
         results = adj.run()
         
