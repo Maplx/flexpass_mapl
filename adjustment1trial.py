@@ -1,6 +1,10 @@
 import pulp
 from typedefs import *
 from app import App
+import importlib
+
+import heuristic
+importlib.reload(heuristic)
 from heuristic import Heuristic
 import copy
 import numpy as np
@@ -33,7 +37,7 @@ class Adjustment:
         flex = self.heu.run()
         self.flex = flex
         bt = time.time()
-        if flex > 0 and flex < self.n_apps:
+        if flex > 0 and flex <= self.n_apps:
             print("init flex", flex)
             self.partition = self.heu.partition
             self.feasible_states = self.heu.all_feasible_states
@@ -44,7 +48,7 @@ class Adjustment:
         return []
 
     def transition(self):
-        k = 500
+        k = 100
         results = []
         for _ in range(k):
             for i in range(self.n_apps):
@@ -52,11 +56,12 @@ class Adjustment:
                     next_state = np.random.choice(
                         range(self.apps[i].n_states), p=self.apps[i].transitions[self.current_states[i]])
                     self.current_states[i] = next_state
+                    print("current states:", self.current_states)
                     self.transition_times += 1
                     if next_state in self.infeasible_states[i]:
                         if self.verbose:
                             print(f"App {i} enters an infeasible state")
-                            print("current states:", self.current_states)
+            
                         
                         self.infeasible_times += 1
                         inf_app = i
@@ -69,6 +74,7 @@ class Adjustment:
                         if self.verbose:
                             print('safe provisions:', safe_provisions, 'unsafe provisions:', unsafe_provisions)
                             print('flexibility losses:', self.loss)
+                        
                         bt = time.time()
                         selected, total_loss, all_covered = self.solve_setcover(request, safe_provisions, self.loss)
                        
@@ -77,16 +83,40 @@ class Adjustment:
                                 print("Selected apps:", selected, "total loss:", total_loss)
 
                             self.flex = self.flex-total_loss
+                            
                             self.infeasible_states[inf_app].remove(self.current_states[inf_app])
                             self.feasible_states[inf_app].append(self.current_states[inf_app])
                             for a in selected:
                                 self.feasible_states[a] = [s for s in self.feasible_states[a]
                                                            if s not in self.sacrificed_states[a]]
                                 self.infeasible_states[a] = self.infeasible_states[a]+self.sacrificed_states[a]
+                            
+                            
 
                                 for r in safe_provisions[a]:
                                     self.partition[r[1]][r[0]].app = inf_app
                                     self.partition[r[1]][r[0]].states = [self.current_states[inf_app]]
+                            
+                            
+                            self.flex = self.calculate_flexibility_static()
+
+                            self.heu2 = self.heu2 = Heuristic(21, apps=self.apps, links=self.links, T=self.T, current_states=self.current_states, verbose=False)
+                            heu_flex = self.heu2.run()
+
+                            if self.flex > heu_flex:
+                                print('Issue')
+                                print('Issue')
+                                print('Issue')
+                                print('Issue')
+                                print('Issue')
+                                self.flex = heu_flex
+                                self.reconfig_count += 1
+
+
+                            print('Sacraficed states:',self.sacrificed_states)
+                            print('Set Cover Flexibility:', self.flex)
+                            print('Hue Flex:', heu_flex)
+                            print('loss:',total_loss)
                             print(f"adjusted {len(selected)} apps", end=",")
                             self.time += time.time()-bt
                             res = {"method": "adjustment", "n_affected_apps": len(
@@ -95,18 +125,21 @@ class Adjustment:
                             if self.verbose:
                                 print("unable to satisfy resource request")
                             bt = time.time()
-                            self.heu2 = Heuristic(0, self.apps, self.links, self.T, self.current_states, verbose=False)
+                            self.heu2 = Heuristic(21, self.apps, self.links, self.T, self.current_states, verbose=False)
                             self.flex = self.heu2.run()
                             if self.flex == 0:
                                 # if self.verbose:
                                 print("reconfig also failed")
-                                #return results
+                                self.reconfig_count += 1
+                                res = {"method": "reconfig", "n_affected_apps": self.n_apps,"flex": 0, "time": time.time()-bt,  "reconfig_count":self.reconfig_count}
+                                
+                               # return results
                             else:
                                 self.partition = self.heu2.partition
                                 self.feasible_states = self.heu2.all_feasible_states
                                 self.infeasible_states = self.heu2.all_infeasible_states
                                 self.reconfig_count += 1
-                                res = {"method": "reconfig", "n_affected_apps": self.n_apps - 10,
+                                res = {"method": "reconfig", "n_affected_apps": self.n_apps ,
                                        "flex": self.flex, "time": time.time()-bt,  "reconfig_count":self.reconfig_count}
                                 self.time += time.time()-bt
                                 print("reconfig", end=",")
@@ -117,7 +150,7 @@ class Adjustment:
                         results.append({"method": "adjustment", "n_affected_apps": 0,
                                        "flex": self.flex, "time": 0,  "reconfig_count":self.reconfig_count})
                     
-                    if self.transition_times >= 500:
+                    if self.transition_times >= 200:
                         return results
 
         print(f"Number of reconfigurations: {self.reconfig_count}")
@@ -211,6 +244,37 @@ class Adjustment:
             denominator += (gamma**k)
         flex = flex/denominator
         return flex
+    
+    def calculate_flexibility_static(self):
+        total_flex = 0
+        gamma = 0.9
+        self.heu.all_feasible_states = []
+        self.heu.all_infeasible_states = []
+        for i, app in enumerate(self.apps):
+            feasible_states = []
+            infeasible_states = []
+            for s, sch in enumerate(self.heu.schedule[i]):
+                if sch.n_packets_scheduled == sch.n_total_packets:
+                    feasible_states.append(s)
+                else:
+                    infeasible_states.append(s)
+            self.heu.all_feasible_states.append(feasible_states)
+            self.heu.all_infeasible_states.append(infeasible_states)
+            M_prime = copy.deepcopy(app.transitions)
+            for s in range(len(M_prime)):
+                if s not in feasible_states:
+                    M_prime[s, :] = 0
+                    M_prime[s, s] = 1
+            flex = 0
+            denominator = 0
+            for k in range(1, app.k_max+1):
+                k_step_matrix = np.linalg.matrix_power(M_prime, k)
+                k_step_success_prob = sum(k_step_matrix[self.current_states[i], :][s] for s in feasible_states)
+                flex += (gamma**k)*k_step_success_prob
+                denominator += (gamma**k)
+            flex = flex/denominator
+            total_flex += flex
+        return round(total_flex, 5)
 
     def solve_setcover(self, RR, RP, loss):
         # Create the LP problem
@@ -251,9 +315,9 @@ if __name__ == "__main__":
     avg_affected_apps = 0
     n_trials = 1
     for i in range(n_trials):
-        adj = Adjustment(trial=21, n_apps=10, T=50, links=range(30),
-                         max_n_states=20, max_n_flows=7, max_n_flow_hop=4,
-                         verbose=False)
+        adj = Adjustment(trial=21, n_apps=6, T=50, links=range(30),
+                         max_n_states=10, max_n_flows=8, max_n_flow_hop=5,
+                         verbose=True)
         results = adj.run()
         
 

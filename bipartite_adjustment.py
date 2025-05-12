@@ -1,6 +1,11 @@
 import pulp
 from typedefs import *
 from app import App
+import importlib
+
+import heuristic
+importlib.reload(heuristic)
+
 from heuristic import Heuristic
 import copy
 import numpy as np
@@ -65,6 +70,16 @@ class Adjustment:
                         self.infeasible_times += 1
                         inf_app = i
                         request = self.find_resource_request(inf_app, self.current_states[inf_app])
+                        print(request)
+
+                        for r in request:
+                            for t in [r[1][0], r[1][1]-1]:
+                                a = self.partition[t][r[0]].app
+                                if a == -1:
+                                    self.partition[t][r[0]].app = inf_app
+                                    request.remove(r)
+
+
                         
                         if self.verbose:
                             print('request:', request)
@@ -146,7 +161,7 @@ class Adjustment:
                         results.append({"method": "adjustment", "n_affected_apps": 0,
                                        "flex": self.flex, "time": 0,  "reconfig_count":self.reconfig_count})
                     
-                    if self.transition_times >= 1500:
+                    if self.transition_times >= 500:
                         return results
 
         print(f"Number of reconfigurations: {self.reconfig_count}")
@@ -303,6 +318,7 @@ class Adjustment:
         n_provisions = len(valid_provisions)
         cost_matrix = np.full((n_requests, n_provisions), 9999.0)  # Large value for invalid matches
 
+
         # Populate the cost matrix
         for req_idx, (req_link, req_time_range) in enumerate(valid_requests):
             for prov_idx, prov_links in enumerate(valid_provisions):
@@ -310,6 +326,8 @@ class Adjustment:
                     if prov_link == req_link and req_time_range[0] <= prov_time <= req_time_range[1]:
                         # Set the cost as the loss of the provider
                         cost_matrix[req_idx][prov_idx] = loss[provision_to_app[prov_idx]]
+        
+        print('cost matrix:', cost_matrix)
 
         # Apply the Hungarian algorithm to the valid part of the cost matrix
         row_ind, col_ind = linear_sum_assignment(cost_matrix)

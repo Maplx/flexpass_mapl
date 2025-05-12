@@ -1,3 +1,6 @@
+import importlib
+import app 
+import utils
 from app import App
 import copy
 import numpy as np
@@ -19,21 +22,31 @@ class Heuristic:
 
         self.schedule = [[Schedule(self.count_txs(i, s)) for s in range(self.apps[i].n_states)]
                          for i in range(len(self.apps))]
+        
+        self.time_dependency = []
+        self.s0_feasibility = True
+        self.linkgain = []
 
     def run(self):
         for t in range(self.T):
             for i in range(len(self.apps)):
+                self.time_dependency.append([])
                 for s in range(self.apps[i].n_states):
+                    self.time_dependency[i].append([])
                     schedule = self.schedule[i][s]
                     schedule.current_used_links = {}
                     flows = self.apps[i].states[s].flows
                     for f in flows:
+          
+                        self.time_dependency[i][s].append([])
                         if t % f.period == 0:
                             schedule.cur_hops[f.id] = 0
                             pkt = Packet(f.id, f.txs[schedule.cur_hops[f.id]], (t//f.period+1)*f.period, f.period)
                             schedule.packets_to_schedule.append(pkt)
 
                     schedule.packets_to_schedule.sort(key=lambda x: (x.deadline, x.flow_id))
+
+
             for e in self.links:
                 if self.partition[t][e].app == -1:
                     gains: list[Gain] = []
@@ -43,6 +56,7 @@ class Heuristic:
 
                     if gains[0].value > 0:
                         app = gains[0].app
+                        self.linkgain.append(gains[0].value)
 
                         self.partition[t][e].app = app
 
@@ -57,19 +71,21 @@ class Heuristic:
                             for pkt in gains[0].pkts_per_state[s]:
                                 schedule.current_used_links[pkt.link] = True
                                 schedule.cur_hops[pkt.flow_id] += 1
+                                self.time_dependency[app][s][pkt.flow_id].append(t)
                                 f = self.apps[app].states[s].flows[pkt.flow_id]
                                 if schedule.cur_hops[pkt.flow_id] < len(f.txs):
                                     pkt = Packet(f.id, f.txs[schedule.cur_hops[f.id]],
                                                  (t//f.period+1)*f.period, f.period)
                                     schedule.packets_to_schedule.append(pkt)
 
+
         flexibility = 0
-        s0_feasibility = True
         for i in range(len(self.apps)):
+
             if self.schedule[i][self.current_states[i]].n_packets_scheduled != self.schedule[i][self.current_states[i]].n_total_packets:
-                s0_feasibility = False
+                self.s0_feasibility = False
                 break
-        if s0_feasibility:
+        if self.s0_feasibility:
             flexibility = self.calculate_flexibility()
 
         return flexibility
@@ -104,11 +120,21 @@ class Heuristic:
     def check_new_scheduled_packets(self, t, i, s):
         schedule = self.schedule[i][s]
         used_links = copy.deepcopy(schedule.current_used_links)
+        
         new_scheduled_packets = []
         for pkt in schedule.packets_to_schedule:
             if self.partition[t][pkt.link].app == i and pkt.link not in used_links:
-                used_links[pkt.link] = True
-                new_scheduled_packets += [pkt]
+                if len(self.time_dependency[i][s][pkt.flow_id]) != 0 and self.time_dependency[i][s][pkt.flow_id][-1] < t:
+                    used_links[pkt.link] = True
+                    new_scheduled_packets += [pkt]
+                if len(self.time_dependency[i][s][pkt.flow_id]) == 0:
+                    used_links[pkt.link] = True
+                    new_scheduled_packets += [pkt]
+        if len(new_scheduled_packets) > 1:
+            print('x')
+            for p in new_scheduled_packets:
+                print(p.link)
+
         return new_scheduled_packets
 
     def calculate_flexibility(self):
@@ -145,17 +171,17 @@ class Heuristic:
 
 if __name__ == "__main__":
     t = 0
-    T = 40
-    links = range(50)
+    T = 50
+    links = range(30)
     # for t in range(50):
-    apps = [App(t, i, links, T=T,
+    apps = [App(21, i, links, T=T,
                 max_n_states=20,
-                max_n_flows=6,
-                max_n_flow_hop=4)
+                max_n_flows=8,
+                max_n_flow_hop=5)
             for i in range(10)]
     bt = time.time()
     h = Heuristic(t, apps, links, T, current_states=[0]*len(apps))
     h.run()
     print(f"Time {time.time()-bt:.2f}s")
-    print(h.calculate_flexibility())
+    print(h.calculate_flexibility(),h.s0_feasibility)
     # h.dump()

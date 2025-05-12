@@ -1,0 +1,41 @@
+{
+    "yAxis": {
+        "name": "Success ratio",
+        "data": []
+    },
+    "xAxis": {
+        "name": "Num of states per app",
+        "data": [
+            4,
+            6,
+            8,
+            10,
+            12,
+            14
+        ]
+    },
+    "series": [
+        {
+            "name": "SMT",
+            "data": [
+                100,
+                100,
+                100,
+                100,
+                92,
+                42
+            ]
+        },
+        {
+            "name": "Heu",
+            "data": [
+                100,
+                100,
+                100,
+                100,
+                100,
+                100
+            ]
+        }
+    ]
+}
