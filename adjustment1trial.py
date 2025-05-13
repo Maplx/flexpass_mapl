@@ -53,8 +53,9 @@ class Adjustment:
         for _ in range(k):
             for i in range(self.n_apps):
                 if len(self.infeasible_states[i]) > 0:
-                    next_state = np.random.choice(
-                        range(self.apps[i].n_states), p=self.apps[i].transitions[self.current_states[i]])
+                    #next_state = np.random.choice(range(self.apps[i].n_states), p=self.apps[i].transitions[self.current_states[i]])
+                    self.precomputed_transitions = np.load("shared_transitions.npy", allow_pickle=True)
+                    next_state = self.precomputed_transitions[i][self.transition_times]
                     self.current_states[i] = next_state
                     print("current states:", self.current_states)
                     self.transition_times += 1
@@ -99,9 +100,13 @@ class Adjustment:
                             
                             
                             self.flex = self.calculate_flexibility_static()
-
-                            self.heu2 = self.heu2 = Heuristic(21, apps=self.apps, links=self.links, T=self.T, current_states=self.current_states, verbose=False)
+                                
+                            self.heu2 = Heuristic(21, apps=self.apps, links=self.links, T=self.T, current_states=self.current_states, verbose=False)
                             heu_flex = self.heu2.run()
+                            self.heu2.calculate_flexibility()
+                            self.partition = self.heu2.partition
+                            self.feasible_states = self.heu2.all_feasible_states
+                            self.infeasible_states = self.heu2.all_infeasible_states
 
                             if self.flex > heu_flex:
                                 print('Issue')
@@ -110,7 +115,6 @@ class Adjustment:
                                 print('Issue')
                                 print('Issue')
                                 self.flex = heu_flex
-                                self.reconfig_count += 1
 
 
                             print('Sacraficed states:',self.sacrificed_states)
@@ -305,7 +309,17 @@ class Adjustment:
     
     
 
-
+def save_shared_transitions(apps, steps=2000):
+    transitions = []
+    for app in apps:
+        current = 0
+        seq = []
+        for _ in range(steps):
+            next_state = np.random.choice(range(app.n_states), p=app.transitions[current])
+            seq.append(next_state)
+            current = next_state
+        transitions.append(seq)
+    np.save("shared_transitions.npy", transitions)
 
 if __name__ == "__main__":
     cnt_no_need = 0
@@ -315,9 +329,10 @@ if __name__ == "__main__":
     avg_affected_apps = 0
     n_trials = 1
     for i in range(n_trials):
-        adj = Adjustment(trial=21, n_apps=6, T=50, links=range(30),
+        adj = Adjustment(trial=20, n_apps=10, T=50, links=range(30),
                          max_n_states=10, max_n_flows=8, max_n_flow_hop=5,
-                         verbose=True)
+                         verbose=False)
+        save_shared_transitions(adj.apps)
         results = adj.run()
         
 

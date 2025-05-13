@@ -11,7 +11,6 @@ import numpy as np
 import random
 import time
 
-
 class Adjustment:
     def __init__(self, trial, n_apps, T, links, max_n_states, max_n_flows, max_n_flow_hop, verbose):
         self.n_apps = n_apps
@@ -30,6 +29,7 @@ class Adjustment:
         self.infeasible_times = 0
         self.transition_times = 0
         self.time = 0
+
 
     def run(self):
         self.current_states = [0]*self.n_apps
@@ -53,8 +53,10 @@ class Adjustment:
         for _ in range(k):
             for i in range(self.n_apps):
                 if len(self.infeasible_states[i]) > 0:
-                    next_state = np.random.choice(
-                        range(self.apps[i].n_states), p=self.apps[i].transitions[self.current_states[i]])
+                    
+                    #next_state = np.random.choice(range(self.apps[i].n_states), p=self.apps[i].transitions[self.current_states[i]])
+                    self.precomputed_transitions = np.load("shared_transitions.npy", allow_pickle=True)
+                    next_state = self.precomputed_transitions[i][self.transition_times]
                     self.current_states[i] = next_state
                     print("current states:", self.current_states)
                     self.transition_times += 1
@@ -107,6 +109,17 @@ class Adjustment:
         return results
 
 
+def save_shared_transitions(apps, steps=2000):
+    transitions = []
+    for app in apps:
+        current = 0
+        seq = []
+        for _ in range(steps):
+            next_state = np.random.choice(range(app.n_states), p=app.transitions[current])
+            seq.append(next_state)
+            current = next_state
+        transitions.append(seq)
+    np.save("shared_transitions.npy", transitions)
 
 if __name__ == "__main__":
     cnt_no_need = 0
@@ -116,10 +129,10 @@ if __name__ == "__main__":
     avg_affected_apps = 0
     n_trials = 1
     for i in range(n_trials):
-        print(n_trials)
-        adj = Adjustment(trial=21, n_apps=6, T=50, links=range(30),
+        adj = Adjustment(trial=20, n_apps=10, T=50, links=range(30),
                          max_n_states=10, max_n_flows=8, max_n_flow_hop=5,
-                         verbose=True)
+                         verbose=False)
+        save_shared_transitions(adj.apps)
         results = adj.run()
         
 

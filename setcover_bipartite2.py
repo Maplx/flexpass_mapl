@@ -15,7 +15,7 @@ from operator import itemgetter
 from scipy.optimize import linear_sum_assignment
 import numpy as np
 
-random.seed(42)
+
 class Adjustment:
     def __init__(self, trial, n_apps, T, links, max_n_states, max_n_flows, max_n_flow_hop, verbose):
         self.n_apps = n_apps
@@ -34,6 +34,11 @@ class Adjustment:
         self.infeasible_times = 0
         self.transition_times = 0
         self.time = 0
+
+        self.precomputed_transitions = np.load("shared_transitions.npy", allow_pickle=True)
+
+    
+        
 
     def run(self):
         self.current_states = [0]*self.n_apps
@@ -56,81 +61,61 @@ class Adjustment:
         results = []
         for _ in range(k):
             for i in range(self.n_apps):
-                if len(self.infeasible_states[i]) > 0:
+                print('i ======',i)
+                if len(self.infeasible_states[i]) >= 0:
                     #next_state = np.random.choice(range(self.apps[i].n_states), p=self.apps[i].transitions[self.current_states[i]])
-                    self.precomputed_transitions = np.load("shared_transitions.npy", allow_pickle=True)
                     next_state = self.precomputed_transitions[i][self.transition_times]
+                    print('next state =========', next_state)
                     self.current_states[i] = next_state
                     print("current states:", self.current_states)
                     self.transition_times += 1
                     if next_state in self.infeasible_states[i]:
                         if self.verbose:
                             print(f"App {i} enters an infeasible state")
-                                                    
+
                         self.infeasible_times += 1
                         inf_app = i
-                        
+
                         request = self.find_resource_request(inf_app, self.current_states[inf_app])
-                        
-                        for r in request:
+
+                        for r in request[:]:
                             for t in [r[1][0], r[1][1]-1]:
                                 a = self.partition[t][r[0]].app
                                 if a == -1:
                                     self.partition[t][r[0]].app = inf_app
                                     if r in request:
                                         request.remove(r)
-                        
+
                         safe_provisions, unsafe_provisions = self.find_resource_provisions(inf_app, request)
-                        #print('safe provision:', safe_provisions)
-                        #print(self.loss)
-                        #print('sacrafice:', self.sacrificed_states)
                         bt = time.time()
                         t_set = 0
-  
+
                         selected, total_loss, all_covered = self.solve_setcover(request, safe_provisions, self.loss)
+
+                        all_covered = True
 
                         if all_covered:
                             print('set cover all covered')
-                           
-                            self.flex = self.flex-total_loss
+                            self.flex = self.flex - total_loss
                             self.infeasible_states[inf_app].remove(self.current_states[inf_app])
                             self.feasible_states[inf_app].append(self.current_states[inf_app])
                             for a in selected:
-                                self.feasible_states[a] = [s for s in self.feasible_states[a]
-                                                           if s not in self.sacrificed_states[a]]
-                                self.infeasible_states[a] = self.infeasible_states[a]+self.sacrificed_states[a]
-
+                                self.feasible_states[a] = [s for s in self.feasible_states[a] if s not in self.sacrificed_states[a]]
+                                self.infeasible_states[a] += self.sacrificed_states[a]
                                 for r in safe_provisions[a]:
                                     self.partition[r[1]][r[0]].app = inf_app
                                     self.partition[r[1]][r[0]].states = [self.current_states[inf_app]]
-                            print(f"adjusted {len(selected)} apps", end=",")
-                            t_set += time.time()-bt
-                            self.time += t_set
-
-                            self.flex = self.calculate_flexibility_static() 
 
                             self.heu2 = Heuristic(21, apps=self.apps, links=self.links, T=self.T, current_states=self.current_states, verbose=False)
                             heu_flex = self.heu2.run()
-                            self.heu2.calculate_flexibility()
-                            self.partition = self.heu2.partition
-                            self.feasible_states = self.heu2.all_feasible_states
-                            self.infeasible_states = self.heu2.all_infeasible_states
-
                             if self.flex > heu_flex:
-                                print('Issue')
-                                print('Issue')
-                                print('Issue')
-                                print('Issue')
-                                print('Issue')
                                 self.flex = heu_flex
-                                
+                                self.reconfig_count += 1
+                     
 
-                            res = {"method": "adjustment", "n_affected_apps": len(
-                                selected), "flex": self.flex, "time": time.time()-bt,  "reconfig_count":self.reconfig_count}
+                            res = {"method": "adjustment", "n_affected_apps": len(selected), "flex": self.flex, "time": time.time()-bt,  "reconfig_count": self.reconfig_count}
 
-              
                         if not all_covered:
-                            print('not all covered')
                             for p in range(len(safe_provisions)):
                                 if len(safe_provisions[p]) > 0:
                                     for ls in safe_provisions[p]:
@@ -138,100 +123,67 @@ class Adjustment:
                                         s = ls[1]
                                         self.partition[s][l].app = inf_app
                                         for r in request:
-                                            if l == r[0] and r[1][0] <= s <=r[1][1]:
+                                            if l == r[0] and r[1][0] <= s <= r[1][1]:
                                                 request.remove(r)
-                                                break    
-                            print('now we used all safe provision, start now unsafe')                  
+                                                break
+                            print('now we used all safe provision, start now unsafe')
                             ac = True
 
-                            request_sorted = sorted(request, key=itemgetter(0))                    
+                            request_sorted = sorted(request, key=itemgetter(0))
                             grouped_resource = [list(group) for key, group in groupby(request_sorted, key=itemgetter(0))]
-    
+
                             total_loss = 0
-                        
                             n_app = 0
                             matched_apps = []
 
-
                             for l in grouped_resource:
-                                
                                 provision, matching_request = self.find_provision(inf_app, single_link_resource_request=l)
-                                matching, total_cost = self.hungarian_matching(provision,self.loss, matching_request)
+                                matching, total_cost = self.hungarian_matching(provision, self.loss, matching_request)
                                 total_loss += total_cost
-                                #print(matching, total_cost)
                                 if matching is None:
                                     ac = False
                                     break
-                            
+
                                 for m in matching:
                                     if m[1] not in matched_apps and m[1] != -1:
                                         matched_apps.append(m[1])
                                         n_app += 1
-
                                     a = m[1]
-                                    
-                                
                                     for r in provision[a]:
                                         self.partition[r[1]][r[0]].app = inf_app
                                         self.partition[r[1]][r[0]].states = [self.current_states[inf_app]]
-
                             if ac:
                                 print('unsafe provision succeed')
-                               
-                                self.flex = self.calculate_flexibility_static()
-
                                 self.heu2 = Heuristic(21, apps=self.apps, links=self.links, T=self.T, current_states=self.current_states, verbose=False)
                                 heu_flex = self.heu2.run()
-                                self.heu2.calculate_flexibility()
-                                self.partition = self.heu2.partition
-                                self.feasible_states = self.heu2.all_feasible_states
-                                self.infeasible_states = self.heu2.all_infeasible_states
-                                print('Flexibility after matching:', self.flex)
-                                print('Flexibility if reconfig:', heu_flex)
                                 if self.flex > heu_flex:
                                     self.flex = heu_flex
-                                    
-                                
-                                print('So flex is:', self.flex)
-                                print(n_app, 'apps engaged in matching adjustment')
-                                self.time += time.time()-bt
-                                self.time += t_set
+                                    self.reconfig_count += 1
                                 
 
-                                res = {"method": "match","n_affected_apps": n_app, "flex": self.flex, "time": time.time()-bt,  "reconfig_count":self.reconfig_count}
-                            
+                                res = {"method": "match", "n_affected_apps": n_app, "flex": self.flex, "time": time.time()-bt,  "reconfig_count": self.reconfig_count}
+
                             if ac == False:
                                 print('even unsafe failed')
-                                if self.verbose:
-                                    print("unable to satisfy resource request")
-                                bt = time.time()
                                 self.heu2 = Heuristic(21, self.apps, self.links, self.T, self.current_states, verbose=False)
                                 self.flex = self.heu2.run()
                                 if self.flex == 0:
-                                    # if self.verbose:
                                     print("reconfig also failed")
                                     self.reconfig_count += 1
-                                    res = {"method": "reconfig", "n_affected_apps": self.n_apps, "flex": 0, "time": time.time()-bt,  "reconfig_count":self.reconfig_count}
-                                    #return results
-                            
+                                    res = {"method": "reconfig", "n_affected_apps": self.n_apps, "flex": 0, "time": time.time()-bt,  "reconfig_count": self.reconfig_count}
                                 else:
                                     self.partition = self.heu2.partition
                                     self.feasible_states = self.heu2.all_feasible_states
                                     self.infeasible_states = self.heu2.all_infeasible_states
                                     self.reconfig_count += 1
                                     self.time += time.time()-bt
+                                    res = {"method": "reconfig", "n_affected_apps": self.n_apps, "flex": self.flex, "time": time.time()-bt,  "reconfig_count": self.reconfig_count}
 
-                                    res = {"method": "reconfig", "n_affected_apps": self.n_apps,
-                                       "flex": self.flex, "time": time.time()-bt,  "reconfig_count":self.reconfig_count}
-                                    print("reconfig flex",self.flex)
-                            
-                        
                         results.append(res)
                     else:
                         print("still feasible")
-                        results.append({"method": "adjustment", "n_affected_apps": 0,
-                                       "flex": self.flex, "time": 0,  "reconfig_count":self.reconfig_count})
-                    
+                        results.append({"method": "adjustment", "n_affected_apps": 0, "flex": self.flex, "time": 0,  "reconfig_count": self.reconfig_count})
+
                     if self.transition_times >= 200:
                         return results
 
@@ -239,9 +191,6 @@ class Adjustment:
         print(self.transition_times)
         return results
 
-
-
-        
 
     def find_resource_request(self, i, s):
         #rough calculation, to be improved
@@ -495,21 +444,9 @@ class Adjustment:
             for e, T in RR
         )
         return selected_subsets, total_loss, all_covered
-    
-    def save_shared_transitions(apps, steps=200):
-        transitions = []
-        for app in apps:
-            current = 0
-            seq = []
-            for _ in range(steps):
-                next_state = np.random.choice(range(app.n_states), p=app.transitions[current])
-                seq.append(next_state)
-                current = next_state
-            transitions.append(seq)
-        np.save("shared_transitions.npy", transitions)
 
 
-def save_shared_transitions(apps, steps=2000):
+def save_shared_transitions(apps, steps=200):
     transitions = []
     for app in apps:
         current = 0
@@ -529,10 +466,12 @@ if __name__ == "__main__":
     avg_affected_apps = 0
     n_trials = 1
     for i in range(n_trials):
-        adj = Adjustment(trial=20, n_apps=10, T=50, links=range(30),
+        adj = Adjustment(trial=20, n_apps=6, T=50, links=range(30),
                          max_n_states=10, max_n_flows=8, max_n_flow_hop=5,
-                         verbose=False)
-        save_shared_transitions(adj.apps)
+                         verbose=True)
+        
+        #save_shared_transitions(adj.apps)
+
         results = adj.run()
         
 
@@ -554,3 +493,4 @@ if __name__ == "__main__":
                 "xAxis": [i for i in range(len(flexs))],
             })
         print(adj.infeasible_times)
+        

@@ -17,20 +17,36 @@ from always_heu import Adjustment as Adjustment1
 from always_heu_3 import Adjustment as Adjustment2
 from adjustment1trial import Adjustment as Adjustment3
 from setcove_bipartite import Adjustment as Adjustment4
+import numpy as np
 
 # Simulation parameters
-n_apps_values = [4, 6, 8, 10, 12] # Varying number of applications
+n_apps_values = [4,6,8,10,12] # Varying number of applications
 T = 50
 links = range(30)
 max_n_states = 10
 max_n_flows = 8
 max_n_flow_hop = 5
 
+def save_shared_transitions(apps, steps=2000):
+    transitions = []
+    for app in apps:
+        current = 0
+        seq = []
+        for _ in range(steps):
+            next_state = np.random.choice(range(app.n_states), p=app.transitions[current])
+            seq.append(next_state)
+            current = next_state
+        transitions.append(seq)
+    np.save("shared_transitions.npy", transitions)
+
+
 # Function to run simulation for a given Adjustment class
 def run_simulation(AdjustmentClass, n_apps):
     adj = AdjustmentClass(trial=21, n_apps=n_apps, T=T, links=links,
                           max_n_states=max_n_states, max_n_flows=max_n_flows,
                           max_n_flow_hop=max_n_flow_hop, verbose=False)
+    save_shared_transitions(adj.apps)
+    
     results = adj.run()
 
     # Collect metrics
@@ -59,6 +75,10 @@ results_adjust1 = []
 results_setbip = []
 # Run simulations across different n_apps values with a progress bar
 for n_apps in tqdm(n_apps_values, desc="Running simulations for different n_apps"):
+    adj = Adjustment1(trial=20, n_apps=n_apps, T=50, links=range(30),
+                         max_n_states=10, max_n_flows=8, max_n_flow_hop=5,
+                         verbose=False)
+    save_shared_transitions(adj.apps)
 
     results_heu.append(run_simulation(Adjustment1, n_apps))
     results_heu3.append(run_simulation(Adjustment2, n_apps))
